@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String // MANAGER | STAFF
+  departmentId String?
+  createdAt    DateTime @default(now())
+
+  department       Department?         @relation(fields: [departmentId], references: [id])
+  stockMovements   StockMovement[]
+  aiProposals      AIActionProposal[]
+  auditLogs        AuditLog[]
+}
+
+model Department {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String?
+
+  categories Category[]
+  products   Product[]
+  users      User[]
+}
+
+model Category {
+  id           String @id @default(cuid())
+  name         String
+  departmentId String
+
+  department Department @relation(fields: [departmentId], references: [id])
+  products   Product[]
+
+  @@unique([name, departmentId])
+  @@index([departmentId])
+}
+
+model Supplier {
+  id      String  @id @default(cuid())
+  name    String  @unique
+  phone   String?
+  email   String?
+  address String?
+
+  products       Product[]
+  stockMovements StockMovement[]
+  aiProposals    AIActionProposal[]
+}
+
+model Product {
+  id            String   @id @default(cuid())
+  sku           String   @unique
+  name          String
+  description   String?
+  categoryId    String
+  departmentId  String
+  supplierId    String?
+  costPrice     Int // PKR minor units (paisa); 100 = 1 PKR
+  sellingPrice  Int
+  currentStock  Int      @default(0)
+  reorderLevel  Int      @default(10)
+  unit          String   @default("pcs")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  category       Category           @relation(fields: [categoryId], references: [id])
+  department     Department         @relation(fields: [departmentId], references: [id])
+  supplier       Supplier?          @relation(fields: [supplierId], references: [id])
+  stockMovements StockMovement[]
+  aiProposals    AIActionProposal[]
+
+  @@index([departmentId])
+  @@index([categoryId])
+  @@index([name])
+  @@index([currentStock])
+}
+
+model StockMovement {
+  id            String   @id @default(cuid())
+  productId     String
+  type          String // STOCK_IN | STOCK_OUT | SALE | DAMAGED | ADJUSTMENT
+  quantity      Int
+  previousStock Int
+  newStock      Int
+  reason        String?
+  supplierId    String?
+  performedBy   String
+  source        String   @default("FORM") // FORM | AI
+  unitCost      Int? // snapshot at time of movement (for profit calc)
+  unitPrice     Int? // selling price snapshot for sales
+  createdAt     DateTime @default(now())
+
+  product  Product   @relation(fields: [productId], references: [id])
+  user     User      @relation(fields: [performedBy], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([productId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([performedBy])
+}
+
+model AIActionProposal {
+  id            String    @id @default(cuid())
+  userId        String
+  productId     String
+  actionType    String // STOCK_IN | STOCK_OUT | SALE | DAMAGED
+  quantity      Int
+  supplierId    String?
+  status        String    @default("PENDING") // PENDING | CONFIRMED | CANCELLED | EXPIRED | REJECTED
+  expectedStock Int // stock at proposal time — must match on confirm
+  reason        String?
+  createdAt     DateTime  @default(now())
+  expiresAt     DateTime
+  confirmedAt   DateTime?
+
+  user     User      @relation(fields: [userId], references: [id])
+  product  Product   @relation(fields: [productId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([userId, status])
+  @@index([status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  entityType String
+  entityId   String?
+  metadata   String? // JSON string
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([entityType])
+}
